@@ -130,6 +130,7 @@ pub fn connect_with_retries(url: impl Into<String>) -> WebSocketConnection {
     let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
     let state = Arc::new(AtomicU8::new(ConnectionState::Connecting.into()));
 
+    let url_for_task = url.clone();
     let state_clone = Arc::clone(&state);
 
     tokio::spawn(async move {
@@ -137,7 +138,7 @@ pub fn connect_with_retries(url: impl Into<String>) -> WebSocketConnection {
         loop {
             state_clone.store(ConnectionState::Connecting.into(), Ordering::SeqCst);
 
-            match handle_connection(&url, &mut outbound_rx, &inbound_tx, &state_clone).await {
+            match handle_connection(&url_for_task, &mut outbound_rx, &inbound_tx, &state_clone).await {
                 Ok(()) => {
                     state_clone.store(ConnectionState::Disconnected.into(), Ordering::SeqCst);
                     break;

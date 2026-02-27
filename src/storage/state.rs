@@ -33,7 +33,7 @@ impl RedisStateManager {
     ) -> anyhow::Result<()> {
         let key = Self::key(market_slug, round_start);
         let val = serde_json::to_string(state)?;
-        self.conn.set(key, val).await?;
+        self.conn.set::<_, _, ()>(key, val).await?;
         Ok(())
     }
 
