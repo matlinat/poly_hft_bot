@@ -124,6 +124,8 @@ impl TwoLegEngine {
             round_start: current_round_start,
         };
 
+        let active_unhedged = self.active_unhedged_trades();
+
         let baseline_mid = snapshot.mid_up();
         let round = self
             .rounds
@@ -135,13 +137,15 @@ impl TwoLegEngine {
         match (&round.leg1, round.hedged) {
             (None, false) => {
                 // Potential Leg 1 entry.
-                if let Some(decision) = self.maybe_open_leg1(round, &snapshot, available_capital) {
+                if let Some(decision) =
+                    maybe_open_leg1(&self.params, active_unhedged, round, &snapshot, available_capital)
+                {
                     decisions.push(decision);
                 }
             }
             (Some(leg1), false) => {
                 // Leg 1 is open, consider hedge.
-                if let Some(decision) = self.maybe_open_leg2(leg1, round, &snapshot) {
+                if let Some(decision) = maybe_open_leg2(&self.params, leg1, round, &snapshot) {
                     round.hedged = true;
                     decisions.push(decision);
                 }
@@ -191,23 +195,26 @@ impl TwoLegEngine {
             .retain(|_, r| round_end(r.round_start) >= now);
     }
 
-    fn maybe_open_leg1(
-        &mut self,
-        round: &mut RoundInternal,
-        snapshot: &MarketSnapshot,
-        available_capital: f64,
-    ) -> Option<TwoLegDecision> {
+}
+
+fn maybe_open_leg1(
+    params: &TwoLegParams,
+    active_unhedged_trades: usize,
+    round: &mut RoundInternal,
+    snapshot: &MarketSnapshot,
+    available_capital: f64,
+) -> Option<TwoLegDecision> {
         if available_capital <= 0.0 {
             return None;
         }
 
         // Respect global cap on concurrent unhedged trades.
-        if self.active_unhedged_trades() >= self.params.max_concurrent_trades {
+        if active_unhedged_trades >= params.max_concurrent_trades {
             return None;
         }
 
         // Only trade early in the round.
-        if !within_leg1_window(snapshot.ts, self.params.window_min) {
+        if !within_leg1_window(snapshot.ts, params.window_min) {
             return None;
         }
 
@@ -229,7 +236,7 @@ impl TwoLegEngine {
         }
 
         // Estimate win probability from crash severity and current price.
-        let mut p = (1.0 - current_mid) * (1.0 + self.params.move_pct);
+        let mut p = (1.0 - current_mid) * (1.0 + params.move_pct);
         if !p.is_finite() {
             return None;
         }
@@ -240,17 +247,17 @@ impl TwoLegEngine {
             available_capital,
             price_for_sizing,
             p,
-            self.params.fee_rate,
-            self.params.risk_per_trade_pct,
+            params.fee_rate,
+            params.risk_per_trade_pct,
         );
 
-        let mut shares = kelly_shares.min(self.params.base_shares);
+        let mut shares = kelly_shares.min(params.base_shares);
         if !shares.is_finite() || shares <= 0.0 {
             return None;
         }
 
         // Ensure we do not request negative or absurdly large size.
-        shares = shares.clamp(0.0, self.params.base_shares);
+        shares = shares.clamp(0.0, params.base_shares);
 
         let leg1 = LegPosition {
             side: LegSide::Up,
@@ -269,12 +276,12 @@ impl TwoLegEngine {
         })
     }
 
-    fn maybe_open_leg2(
-        &self,
-        leg1: &LegPosition,
-        round: &RoundInternal,
-        snapshot: &MarketSnapshot,
-    ) -> Option<TwoLegDecision> {
+fn maybe_open_leg2(
+    params: &TwoLegParams,
+    leg1: &LegPosition,
+    round: &RoundInternal,
+    snapshot: &MarketSnapshot,
+) -> Option<TwoLegDecision> {
         // Avoid hedging in the last seconds of the round.
         if seconds_remaining(snapshot.ts) <= 3 {
             return None;
@@ -289,16 +296,12 @@ impl TwoLegEngine {
             return None;
         }
 
-        let expected_profit = locked_profit(
-            leg1.entry_price,
-            hedge_price,
-            leg1.shares,
-            self.params.fee_rate,
-        );
+        let expected_profit =
+            locked_profit(leg1.entry_price, hedge_price, leg1.shares, params.fee_rate);
 
         // Enforce both profit and total-cost filters.
         let total_cost = leg1.entry_price + hedge_price;
-        if expected_profit < self.params.min_profit_usd || total_cost > self.params.sum_target {
+        if expected_profit < params.min_profit_usd || total_cost > params.sum_target {
             return None;
         }
 
