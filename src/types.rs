@@ -47,8 +47,13 @@ pub struct BotConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MarketConfig {
     pub slug: String,
-    pub up_token_id: String,
-    pub down_token_id: String,
+    /// Coin for 15m dynamic markets (e.g. "btc", "eth", "sol"). If set, token IDs are resolved from Gamma API at startup.
+    #[serde(default)]
+    pub coin: Option<String>,
+    #[serde(default)]
+    pub up_token_id: Option<String>,
+    #[serde(default)]
+    pub down_token_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

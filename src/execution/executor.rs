@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use crate::client::clob::ClobClient;
+use crate::client::gamma::ResolvedMarket;
 use crate::client::ClientError;
 use crate::monitoring::metrics::METRICS;
 use crate::strategy::{LegSide, TwoLegDecision};
@@ -94,25 +95,25 @@ enum ExecutionBackend {
 pub struct OrderExecutor {
     backend: ExecutionBackend,
     breaker: CircuitBreaker,
-    markets_by_slug: HashMap<String, MarketConfig>,
+    markets_by_slug: HashMap<String, ResolvedMarket>,
     orders: HashMap<OrderId, Order>,
 }
 
 impl OrderExecutor {
-    pub fn from_config(cfg: &AppConfig) -> ExecutionResult<Self> {
-        let markets_by_slug = cfg
-            .markets
-            .markets
-            .iter()
-            .cloned()
-            .map(|m| (m.slug.clone(), m))
-            .collect::<HashMap<_, _>>();
-
-        if markets_by_slug.is_empty() {
+    /// Build executor from config and pre-resolved markets (e.g. from Gamma API for 15m markets).
+    pub fn from_config_and_resolved(
+        cfg: &AppConfig,
+        resolved: Vec<ResolvedMarket>,
+    ) -> ExecutionResult<Self> {
+        if resolved.is_empty() {
             return Err(ExecutionError::Config(
                 "no markets configured for execution".to_string(),
             ));
         }
+        let markets_by_slug = resolved
+            .into_iter()
+            .map(|m| (m.slug.clone(), m))
+            .collect::<HashMap<_, _>>();
 
         let backend = match cfg.execution.mode {
             ExecutionMode::Paper => ExecutionBackend::Paper(PaperExecutor::new()),
@@ -128,6 +129,29 @@ impl OrderExecutor {
             markets_by_slug,
             orders: HashMap::new(),
         })
+    }
+
+    /// Build executor from config only; requires every market to have `up_token_id` and `down_token_id` set (no Gamma resolution).
+    pub fn from_config(cfg: &AppConfig) -> ExecutionResult<Self> {
+        let resolved: Vec<ResolvedMarket> = cfg
+            .markets
+            .markets
+            .iter()
+            .map(|m| {
+                let up = m.up_token_id.as_ref().ok_or_else(|| {
+                    ExecutionError::Config(format!("market {} missing up_token_id", m.slug))
+                })?;
+                let down = m.down_token_id.as_ref().ok_or_else(|| {
+                    ExecutionError::Config(format!("market {} missing down_token_id", m.slug))
+                })?;
+                Ok(ResolvedMarket {
+                    slug: m.slug.clone(),
+                    up_token_id: up.clone(),
+                    down_token_id: down.clone(),
+                })
+            })
+            .collect::<ExecutionResult<Vec<_>>>()?;
+        Self::from_config_and_resolved(cfg, resolved)
     }
 
     /// Convert a high-level strategy decision into an order request and send it to the backend.
@@ -544,8 +568,9 @@ mod tests {
             markets: MarketsConfig {
                 markets: vec![MarketConfig {
                     slug: "BTC-USD-15MIN".to_string(),
-                    up_token_id: "BTC_15M_UP".to_string(),
-                    down_token_id: "BTC_15M_DOWN".to_string(),
+                    coin: None,
+                    up_token_id: Some("BTC_15M_UP".to_string()),
+                    down_token_id: Some("BTC_15M_DOWN".to_string()),
                 }],
             },
             execution: ExecutionConfig {

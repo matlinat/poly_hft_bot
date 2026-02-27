@@ -5,7 +5,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::select;
 use tokio::time::interval;
 
-use crate::monitoring::metrics::{log_metrics_snapshot, MetricsSnapshot, METRICS};
+use crate::monitoring::metrics::{log_metrics_snapshot, METRICS};
 
 /// Spawn a background task that periodically logs a compact metrics snapshot.
 ///

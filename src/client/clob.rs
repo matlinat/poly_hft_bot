@@ -1,6 +1,4 @@
 use std::time::Duration;
-
-use chrono::Utc;
 use reqwest::{Client, Method};
 use serde::de::DeserializeOwned;
 use serde::Serialize;

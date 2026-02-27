@@ -2,6 +2,7 @@ use thiserror::Error;
 
 pub mod auth;
 pub mod clob;
+pub mod gamma;
 pub mod websocket;
 
 #[derive(Debug, Error)]

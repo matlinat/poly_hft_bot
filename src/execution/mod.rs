@@ -10,6 +10,7 @@ use serde::Deserialize;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::{info, warn};
 
+use crate::client::gamma::{resolve_15m_market, ResolvedMarket};
 use crate::client::websocket::connect_with_retries;
 use crate::monitoring::{dashboard, metrics::METRICS};
 use crate::storage::{
@@ -17,7 +18,7 @@ use crate::storage::{
     recorder::{SnapshotRecorder, TradeRecorder},
 };
 use crate::strategy::{LegSide, MarketSnapshot, TwoLegDecision, TwoLegEngine, TwoLegParams};
-use crate::types::AppConfig;
+use crate::types::{AppConfig, MarketConfig};
 
 pub use executor::{ExecutionError, ExecutionResult, OrderExecutor};
 
@@ -44,14 +45,14 @@ struct PriceChangeItem {
 
 #[derive(Debug, Deserialize)]
 struct PriceChangeEvent {
-    event_type: String,
+    _event_type: String,
     price_changes: Vec<PriceChangeItem>,
     timestamp: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct BestBidAskEvent {
-    event_type: String,
+    _event_type: String,
     asset_id: String,
     best_bid: String,
     best_ask: String,
@@ -289,13 +290,78 @@ async fn handle_ws_text(
     Ok(())
 }
 
+/// Resolve markets to token IDs: from Gamma API for 15m (when `coin` is set), else from config.
+async fn resolve_markets(
+    http: &reqwest::Client,
+    markets: &[MarketConfig],
+) -> anyhow::Result<Vec<ResolvedMarket>> {
+    let mut resolved = Vec::with_capacity(markets.len());
+    for m in markets {
+        if let Some(ref coin) = m.coin {
+            match resolve_15m_market(http, coin, &m.slug).await {
+                Ok(Some(r)) => {
+                    info!(
+                        target: "bot",
+                        slug = %r.slug,
+                        coin = %coin,
+                        "resolved 15m market from Gamma API"
+                    );
+                    resolved.push(r);
+                }
+                Ok(None) => {
+                    warn!(
+                        target: "bot",
+                        slug = %m.slug,
+                        coin = %coin,
+                        "Gamma API returned no market for current round; skipping"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        target: "bot",
+                        slug = %m.slug,
+                        coin = %coin,
+                        error = %e,
+                        "failed to resolve 15m market from Gamma; skipping"
+                    );
+                }
+            }
+        } else if let (Some(ref up), Some(ref down)) = (&m.up_token_id, &m.down_token_id) {
+            resolved.push(ResolvedMarket {
+                slug: m.slug.clone(),
+                up_token_id: up.clone(),
+                down_token_id: down.clone(),
+            });
+        } else {
+            warn!(
+                target: "bot",
+                slug = %m.slug,
+                "market has no coin (for Gamma) and no token IDs; skipping"
+            );
+        }
+    }
+    Ok(resolved)
+}
+
 /// Entrypoint used by `main.rs` to start the trading bot.
 ///
 /// This wires together WebSocket ingestion, strategy engine, execution, storage,
-/// and monitoring into a single event-driven loop.
+/// and monitoring into a single event-driven loop. For 15m markets, set `coin` in config
+/// (e.g. "btc", "eth", "sol") to resolve token IDs from the Gamma API at startup.
 pub async fn run_bot(cfg: AppConfig) -> anyhow::Result<()> {
     // Periodic metrics snapshots for basic observability.
     dashboard::spawn_dashboard_task(Duration::from_secs(10));
+
+    // HTTP client for Gamma API (no auth).
+    let http = reqwest::Client::builder()
+        .user_agent("polymarket-hft-bot/0.1")
+        .build()?;
+
+    // Resolve markets to token IDs (Gamma for 15m when coin is set, else from config).
+    let resolved = resolve_markets(&http, &cfg.markets.markets).await?;
+    if resolved.is_empty() {
+        anyhow::bail!("no markets resolved; check [markets.markets] and coin/token IDs");
+    }
 
     // Storage backends.
     let pool = create_pg_pool(&cfg.postgres).await?;
@@ -306,8 +372,8 @@ pub async fn run_bot(cfg: AppConfig) -> anyhow::Result<()> {
     let params = TwoLegParams::from(&cfg.bot);
     let mut engine = TwoLegEngine::new(params);
 
-    // Execution engine (paper or live).
-    let mut executor = OrderExecutor::from_config(&cfg)?;
+    // Execution engine (paper or live) using resolved markets.
+    let mut executor = OrderExecutor::from_config_and_resolved(&cfg, resolved.clone())?;
     let mode = match cfg.execution.mode {
         crate::types::ExecutionMode::Paper => "paper",
         crate::types::ExecutionMode::Live => "live",
@@ -317,15 +383,15 @@ pub async fn run_bot(cfg: AppConfig) -> anyhow::Result<()> {
         target: "bot",
         execution_mode = mode,
         max_parallel_orders = cfg.execution.max_parallel_orders,
-        markets = cfg.markets.markets.len(),
+        markets = resolved.len(),
         "execution engine initialized"
     );
 
-    // Map asset IDs to (market_slug, leg side) using configured markets.
+    // Map asset IDs to (market_slug, leg side) using resolved markets.
     let mut asset_to_market: HashMap<String, (String, LegSide)> = HashMap::new();
     let mut books_by_market: HashMap<String, MarketBook> = HashMap::new();
 
-    for m in &cfg.markets.markets {
+    for m in &resolved {
         asset_to_market.insert(m.up_token_id.clone(), (m.slug.clone(), LegSide::Up));
         asset_to_market.insert(m.down_token_id.clone(), (m.slug.clone(), LegSide::Down));
         books_by_market.insert(m.slug.clone(), MarketBook::default());
@@ -341,11 +407,9 @@ pub async fn run_bot(cfg: AppConfig) -> anyhow::Result<()> {
 
     let mut conn = connect_with_retries(ws_url);
     let sender = conn.sender();
-    let mut inbound_rx = conn.receiver();
+    let inbound_rx = conn.receiver();
 
-    let assets: Vec<String> = cfg
-        .markets
-        .markets
+    let assets: Vec<String> = resolved
         .iter()
         .flat_map(|m| [m.up_token_id.clone(), m.down_token_id.clone()])
         .collect();

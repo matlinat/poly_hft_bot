@@ -2,14 +2,10 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::{stream::SplitStream, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio::time::interval;
-use tokio_tungstenite::{
-    connect_async,
-    tungstenite::protocol::Message,
-    WebSocketStream,
-};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use super::{ClientError, ClientResult};
 
@@ -44,7 +40,7 @@ impl From<ConnectionState> for u8 {
 }
 
 pub struct WebSocketConnection {
-    url: String,
+    _url: String,
     outbound_tx: mpsc::UnboundedSender<Message>,
     inbound_rx: mpsc::UnboundedReceiver<Message>,
     state: Arc<AtomicU8>,
@@ -155,7 +151,7 @@ pub fn connect_with_retries(url: impl Into<String>) -> WebSocketConnection {
     });
 
     WebSocketConnection {
-        url,
+        _url: url,
         outbound_tx,
         inbound_rx,
         state,
