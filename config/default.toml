@@ -1,0 +1,45 @@
+[redis]
+url = "redis://127.0.0.1/"
+
+[postgres]
+url = "postgres://polymarket:polymarket@localhost:5432/polymarket_hft"
+
+[api]
+base_url = "https://clob.polymarket.com"
+ws_url = "wss://clob.polymarket.com/ws"
+api_key = "${POLYMARKET_API_KEY}"
+api_secret = "${POLYMARKET_API_SECRET}"
+api_passphrase = "${POLYMARKET_API_PASSPHRASE}"
+wallet_private_key = "${WALLET_PRIVATE_KEY}"
+gnosis_safe_address = ""
+
+[bot]
+shares = 20.0
+sum_target = 0.95
+move_pct = 0.15
+window_min = 2
+max_concurrent_trades = 10
+risk_per_trade_pct = 2.0
+fee_rate = 0.02
+min_profit_usd = 1.0
+
+[markets]
+[[markets.markets]]
+slug = "BTC-USD-15MIN"
+up_token_id = "BTC_15M_UP"
+down_token_id = "BTC_15M_DOWN"
+
+[[markets.markets]]
+slug = "ETH-USD-15MIN"
+up_token_id = "ETH_15M_UP"
+down_token_id = "ETH_15M_DOWN"
+
+[[markets.markets]]
+slug = "SOL-USD-15MIN"
+up_token_id = "SOL_15M_UP"
+down_token_id = "SOL_15M_DOWN"
+
+[execution]
+mode = "paper"
+max_parallel_orders = 32
+
