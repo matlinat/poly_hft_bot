@@ -65,12 +65,12 @@ impl WebSocketConnection {
 }
 
 async fn handle_connection(
-    url: String,
-    mut outbound_rx: mpsc::UnboundedReceiver<Message>,
-    inbound_tx: mpsc::UnboundedSender<Message>,
-    state: Arc<AtomicU8>,
+    url: &str,
+    outbound_rx: &mut mpsc::UnboundedReceiver<Message>,
+    inbound_tx: &mpsc::UnboundedSender<Message>,
+    state: &Arc<AtomicU8>,
 ) -> ClientResult<()> {
-    let (ws_stream, _) = connect_async(&url).await?;
+    let (ws_stream, _) = connect_async(url).await?;
     state.store(ConnectionState::Connected.into(), Ordering::SeqCst);
 
     let (mut write, mut read) = ws_stream.split();
@@ -126,11 +126,10 @@ async fn handle_connection(
 /// - A connection state indicator.
 pub fn connect_with_retries(url: impl Into<String>) -> WebSocketConnection {
     let url = url.into();
-    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
+    let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel();
     let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
     let state = Arc::new(AtomicU8::new(ConnectionState::Connecting.into()));
 
-    let url_clone = url.clone();
     let state_clone = Arc::clone(&state);
 
     tokio::spawn(async move {
@@ -138,7 +137,7 @@ pub fn connect_with_retries(url: impl Into<String>) -> WebSocketConnection {
         loop {
             state_clone.store(ConnectionState::Connecting.into(), Ordering::SeqCst);
 
-            match handle_connection(url_clone.clone(), outbound_rx, inbound_tx.clone(), Arc::clone(&state_clone)).await {
+            match handle_connection(&url, &mut outbound_rx, &inbound_tx, &state_clone).await {
                 Ok(()) => {
                     state_clone.store(ConnectionState::Disconnected.into(), Ordering::SeqCst);
                     break;
