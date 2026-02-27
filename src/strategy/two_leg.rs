@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     strategy::{params::TwoLegParams, MarketSnapshot},
@@ -11,13 +12,13 @@ use crate::{
 };
 
 /// Side of the binary market a given leg is on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LegSide {
     Up,
     Down,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LegPosition {
     pub side: LegSide,
     pub entry_price: f64,
@@ -25,7 +26,7 @@ pub struct LegPosition {
 }
 
 /// Public summary of per-round state for monitoring/backtesting.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TwoLegState {
     Idle,
     Leg1Open {
@@ -63,13 +64,13 @@ pub enum TwoLegDecision {
     },
 }
 
-#[derive(Hash, Eq, PartialEq, Clone, Debug)]
+#[derive(Hash, Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 struct RoundKey {
     market_slug: String,
     round_start: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct RoundInternal {
     round_start: DateTime<Utc>,
     baseline_mid: f64,

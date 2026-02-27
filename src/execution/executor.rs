@@ -6,6 +6,7 @@ use tracing::{info, warn};
 
 use crate::client::clob::ClobClient;
 use crate::client::ClientError;
+use crate::monitoring::metrics::METRICS;
 use crate::strategy::{LegSide, TwoLegDecision};
 use crate::types::{AppConfig, ExecutionMode, MarketConfig};
 
@@ -155,6 +156,12 @@ impl OrderExecutor {
             }
             Err(err) => {
                 self.breaker.on_failure();
+                // Tag failures with market slug so monitoring and alerting can react.
+                let market_slug = match &decision {
+                    TwoLegDecision::OpenLeg1 { market_slug, .. } => market_slug.as_str(),
+                    TwoLegDecision::OpenLeg2 { market_slug, .. } => market_slug.as_str(),
+                };
+                METRICS.record_order_failed(market_slug, &err.to_string());
                 Err(err)
             }
         }
@@ -224,38 +231,40 @@ impl OrderExecutor {
     }
 
     fn decision_to_order_request(&self, decision: &TwoLegDecision) -> ExecutionResult<OrderRequest> {
-        let (market_slug, round_start, leg_side, shares, limit_price, expected_profit) = match decision
-        {
-            TwoLegDecision::OpenLeg1 {
-                market_slug,
-                round_start,
-                side,
-                shares,
-                limit_price,
-            } => (
-                market_slug.clone(),
-                *round_start,
-                *side,
-                *shares,
-                *limit_price,
-                None,
-            ),
-            TwoLegDecision::OpenLeg2 {
-                market_slug,
-                round_start,
-                side,
-                shares,
-                limit_price,
-                expected_locked_profit,
-            } => (
-                market_slug.clone(),
-                *round_start,
-                *side,
-                *shares,
-                *limit_price,
-                Some(*expected_locked_profit),
-            ),
-        };
+        let (market_slug, round_start, leg_side, shares, limit_price, expected_profit, leg_label) =
+            match decision {
+                TwoLegDecision::OpenLeg1 {
+                    market_slug,
+                    round_start,
+                    side,
+                    shares,
+                    limit_price,
+                } => (
+                    market_slug.clone(),
+                    *round_start,
+                    *side,
+                    *shares,
+                    *limit_price,
+                    None,
+                    "leg1",
+                ),
+                TwoLegDecision::OpenLeg2 {
+                    market_slug,
+                    round_start,
+                    side,
+                    shares,
+                    limit_price,
+                    expected_locked_profit,
+                } => (
+                    market_slug.clone(),
+                    *round_start,
+                    *side,
+                    *shares,
+                    *limit_price,
+                    Some(*expected_locked_profit),
+                    "leg2",
+                ),
+            };
 
         let market = self
             .markets_by_slug
@@ -299,6 +308,9 @@ impl OrderExecutor {
                 "submitting directional order (Leg1)"
             );
         }
+
+        // Emit high-level metrics hook for monitoring.
+        METRICS.record_order_submitted(&market_slug, leg_label);
 
         Ok(OrderRequest {
             market_slug,
