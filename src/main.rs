@@ -2,9 +2,12 @@ use clap::{Parser, Subcommand};
 use dotenv::dotenv;
 use tracing_subscriber::EnvFilter;
 
-use polymarket_hft_bot::{backtest, monitoring, types::ExecutionMode};
-
-mod types;
+use polymarket_hft_bot::{
+    backtest,
+    execution,
+    monitoring,
+    types::{AppConfig, ExecutionMode},
+};
 
 #[derive(Parser, Debug)]
 #[command(name = "polymarket-hft-bot")]
@@ -45,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    let mut settings = crate::types::AppConfig::from_file(&cli.config)?;
+    let mut settings = AppConfig::from_file(&cli.config)?;
     if let Some(mode) = cli.mode {
         settings.execution.mode = mode;
     }
@@ -53,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
     match cli.command.unwrap_or(Commands::Run {}) {
         Commands::Run {} => {
             monitoring::logger::log_startup(&settings);
-            polymarket_hft_bot::execution::run_bot(settings).await?;
+            execution::run_bot(settings).await?;
         }
         Commands::Backtest { config } => {
             let backtest_config_path = config.unwrap_or_else(|| "config/backtest.toml".to_string());
