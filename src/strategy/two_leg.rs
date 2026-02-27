@@ -231,7 +231,7 @@ fn maybe_open_leg1(
 
         // Crash detection: require price drop from baseline of at least move_pct.
         let drop = (baseline_mid - current_mid) / baseline_mid;
-        if drop < self.params.move_pct {
+        if drop < params.move_pct {
             return None;
         }
 
@@ -314,7 +314,6 @@ fn maybe_open_leg2(
             expected_locked_profit: expected_profit,
         })
     }
-}
 
 #[cfg(test)]
 mod tests {
