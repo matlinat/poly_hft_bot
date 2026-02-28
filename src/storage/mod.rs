@@ -17,6 +17,8 @@ pub type PgPool = Pool<Postgres>;
 pub async fn create_pg_pool(cfg: &PostgresConfig) -> anyhow::Result<PgPool> {
     let pool = PgPoolOptions::new()
         .max_connections(5)
+        .acquire_timeout(std::time::Duration::from_secs(15))
+        .connect_timeout(std::time::Duration::from_secs(15))
         .connect(&cfg.url)
         .await?;
     Ok(pool)

@@ -349,22 +349,29 @@ async fn resolve_markets(
 /// and monitoring into a single event-driven loop. For 15m markets, set `coin` in config
 /// (e.g. "btc", "eth", "sol") to resolve token IDs from the Gamma API at startup.
 pub async fn run_bot(cfg: AppConfig) -> anyhow::Result<()> {
+    info!(target: "bot", "run_bot starting");
+
     // Periodic metrics snapshots for basic observability.
     dashboard::spawn_dashboard_task(Duration::from_secs(10));
 
-    // HTTP client for Gamma API (no auth).
+    // HTTP client for Gamma API (no auth); short timeout so startup fails fast if Gamma is unreachable.
     let http = reqwest::Client::builder()
         .user_agent("polymarket-hft-bot/0.1")
+        .timeout(Duration::from_secs(15))
         .build()?;
+    info!(target: "bot", "resolving markets from Gamma API / config");
 
     // Resolve markets to token IDs (Gamma for 15m when coin is set, else from config).
     let resolved = resolve_markets(&http, &cfg.markets.markets).await?;
     if resolved.is_empty() {
         anyhow::bail!("no markets resolved; check [markets.markets] and coin/token IDs");
     }
+    info!(target: "bot", count = resolved.len(), "markets resolved");
 
     // Storage backends.
+    info!(target: "bot", "connecting to Postgres");
     let pool = create_pg_pool(&cfg.postgres).await?;
+    info!(target: "bot", "Postgres connected");
     let snapshot_recorder = SnapshotRecorder::new(pool.clone());
     let trade_recorder = TradeRecorder::new(pool.clone());
 
