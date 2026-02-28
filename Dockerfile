@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 COPY --from=builder /app/target/release/polymarket-hft-bot /usr/local/bin/polymarket-hft-bot
 COPY config ./config
 
-ENV RUST_LOG=info
+ENV RUST_LOG=polymarket_hft_bot=debug,bot=debug,info
 
-CMD ["polymarket-hft-bot", "--config", "config/production.toml", "run"]
+CMD ["polymarket-hft-bot", "--config", "config/config.toml", "run"]
 

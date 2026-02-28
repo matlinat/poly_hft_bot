@@ -8,7 +8,7 @@ use anyhow::Result;
 use chrono::{DateTime, TimeZone, Utc};
 use serde::Deserialize;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::client::gamma::{resolve_15m_market, ResolvedMarket};
 use crate::client::websocket::connect_with_retries;
@@ -57,6 +57,24 @@ struct BestBidAskEvent {
     best_bid: String,
     best_ask: String,
     timestamp: String,
+}
+
+fn msg_type(msg: &Message) -> &'static str {
+    match msg {
+        Message::Text(_) => "text",
+        Message::Binary(_) => "binary",
+        Message::Ping(_) => "ping",
+        Message::Pong(_) => "pong",
+        Message::Close(_) => "close",
+    }
+}
+
+fn truncate_token(id: &str) -> String {
+    if id.len() <= 12 {
+        id.to_string()
+    } else {
+        format!("{}..{}", &id[..6], &id[id.len() - 4..])
+    }
 }
 
 fn parse_millis_timestamp(ts: &str) -> DateTime<Utc> {
@@ -306,6 +324,13 @@ async fn resolve_markets(
                         coin = %coin,
                         "resolved 15m market from Gamma API"
                     );
+                    debug!(
+                        target: "bot",
+                        slug = %r.slug,
+                        up_token_prefix = %truncate_token(&r.up_token_id),
+                        down_token_prefix = %truncate_token(&r.down_token_id),
+                        "resolved token IDs"
+                    );
                     resolved.push(r);
                 }
                 Ok(None) => {
@@ -426,8 +451,9 @@ pub async fn run_bot(cfg: AppConfig) -> anyhow::Result<()> {
         "type": "market",
         "custom_feature_enabled": true
     });
-
-    if let Err(err) = sender.send(Message::Text(sub.to_string())) {
+    let sub_payload = sub.to_string();
+    debug!(target: "bot", assets_count = assets.len(), "sending WebSocket subscription");
+    if let Err(err) = sender.send(Message::Text(sub_payload.clone())) {
         return Err(anyhow::anyhow!(format!(
             "failed to send market subscription: {err}"
         )));
@@ -437,6 +463,8 @@ pub async fn run_bot(cfg: AppConfig) -> anyhow::Result<()> {
     // capital assumption for sizing.
     let available_capital = 10_000.0_f64;
 
+    info!(target: "bot", "entering main message loop");
+    let mut msg_count: u64 = 0;
     loop {
         METRICS.heartbeat();
 
@@ -447,6 +475,16 @@ pub async fn run_bot(cfg: AppConfig) -> anyhow::Result<()> {
                 break;
             }
         };
+
+        msg_count += 1;
+        if msg_count <= 20 || msg_count % 500 == 0 {
+            debug!(
+                target: "bot",
+                msg_count,
+                msg_kind = msg_type(&msg),
+                "ws message received"
+            );
+        }
 
         match msg {
             Message::Text(text) => {

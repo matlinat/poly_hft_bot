@@ -50,30 +50,31 @@ GNOSIS_SAFE_ADDRESS=0x... # optional, only if routing via a Safe
 
 ### 3. Configuration
 
-The main config files live under `config/`:
+A single config file is used: `config/config.toml`. It contains defaults for local (localhost Postgres/Redis). In Docker, override via env:
 
-- `config/default.toml`: local development / paper trading defaults (localhost Postgres/Redis).
-- `config/production.toml`: container-friendly production defaults (Docker `db` and `redis` hosts).
-- `config/backtest.toml`: configuration for historical snapshot replay backtests.
+- **POSTGRES_URL** – e.g. `postgres://polymarket:polymarket@db:5432/polymarket_hft` (set in docker-compose for the bot).
+- **REDIS_URL** – e.g. `redis://redis:6379/` (set in docker-compose for the bot).
 
-Key sections:
+Key sections in `config/config.toml`:
 
-- **[redis]** / **[postgres]**: connection URLs.
-- **[api]**: Polymarket CLOB REST/WebSocket endpoints and API credentials (interpolated from env vars).
-- **[bot]**: strategy parameters such as `move_pct`, `sum_target`, and `min_profit_usd`.
-- **[markets]**: which Polymarket markets to trade or backtest.
+- **[redis]** / **[postgres]**: connection URLs (overridden by POSTGRES_URL / REDIS_URL when set).
+- **[api]**: Polymarket CLOB REST/WebSocket endpoints and API credentials (from env).
+- **[bot]**: strategy parameters such as `move_pct`, `sum_target`, `min_profit_usd`.
+- **[markets]**: which Polymarket markets to trade (use `coin` for 15m markets to resolve token IDs from Gamma API).
 - **[execution]**: mode (`paper` or `live`) and max in-flight orders.
+
+Backtests use `config/backtest.toml` for snapshot ranges.
 
 ### 4. Run in Paper Mode (Default)
 
 ```bash
-cargo run -- --config config/default.toml run
+cargo run -- run
 ```
 
-Execution mode defaults to `paper`. You can override:
+(Config defaults to `config/config.toml`.) Override config or mode:
 
 ```bash
-cargo run -- --config config/default.toml --mode live run
+cargo run -- --config config/config.toml --mode live run
 ```
 
 **Warning:** Live mode will attempt to send real orders to Polymarket. Do not enable live mode unless you fully understand the risks and have verified behavior in paper mode.
@@ -121,14 +122,14 @@ docker-compose up --build bot
 This will:
 
 - build the Rust project in a multi-stage Docker image
-- run the bot with `config/production.toml` inside the container
+- run the bot with `config/config.toml` inside the container (POSTGRES_URL and REDIS_URL set for Docker)
 - default to `paper` execution mode
 
 To run a backtest inside Docker, you can override the command:
 
 ```bash
 docker-compose run --rm bot \
-  polymarket-hft-bot --config config/production.toml backtest --config config/backtest.toml
+  polymarket-hft-bot --config config/config.toml backtest --config config/backtest.toml
 ```
 
 ## Risk and Safety Disclaimer

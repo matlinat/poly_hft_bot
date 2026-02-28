@@ -81,8 +81,14 @@ impl AppConfig {
     pub fn from_file(path: &str) -> anyhow::Result<Self> {
         let contents = fs::read_to_string(path)
             .with_context(|| format!("failed to read config file at {path}"))?;
-        let cfg: Self = toml::from_str(&contents)
+        let mut cfg: Self = toml::from_str(&contents)
             .with_context(|| format!("failed to deserialize TOML config at {path}"))?;
+        if let Ok(url) = std::env::var("POSTGRES_URL") {
+            cfg.postgres.url = url;
+        }
+        if let Ok(url) = std::env::var("REDIS_URL") {
+            cfg.redis.url = url;
+        }
         Ok(cfg)
     }
 }

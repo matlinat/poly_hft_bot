@@ -1,3 +1,5 @@
+# Single config for local and Docker. Override via env: POSTGRES_URL, REDIS_URL (optional).
+
 [redis]
 url = "redis://127.0.0.1/"
 
@@ -23,7 +25,6 @@ risk_per_trade_pct = 2.0
 fee_rate = 0.02
 min_profit_usd = 1.0
 
-# 15m UP/DOWN markets: set "coin" to resolve token IDs from Gamma API at startup (slug is dynamic: {coin}-updown-15m-{round_ts}).
 [markets]
 [[markets.markets]]
 slug = "BTC-USD-15MIN"
@@ -40,4 +41,3 @@ coin = "sol"
 [execution]
 mode = "paper"
 max_parallel_orders = 32
-

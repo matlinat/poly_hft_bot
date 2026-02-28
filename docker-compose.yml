@@ -23,6 +23,8 @@ services:
     env_file:
       - .env
     environment:
-      RUST_LOG: "info"
-    command: ["polymarket-hft-bot", "--config", "config/production.toml", "run"]
+      RUST_LOG: "polymarket_hft_bot=debug,bot=debug,info"
+      POSTGRES_URL: "postgres://polymarket:polymarket@db:5432/polymarket_hft"
+      REDIS_URL: "redis://redis:6379/"
+    command: ["polymarket-hft-bot", "--config", "config/config.toml", "run"]
 
