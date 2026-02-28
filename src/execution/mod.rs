@@ -66,6 +66,7 @@ fn msg_type(msg: &Message) -> &'static str {
         Message::Ping(_) => "ping",
         Message::Pong(_) => "pong",
         Message::Close(_) => "close",
+        Message::Frame(_) => "frame",
     }
 }
 
