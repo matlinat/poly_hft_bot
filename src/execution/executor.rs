@@ -9,7 +9,7 @@ use crate::client::gamma::ResolvedMarket;
 use crate::client::ClientError;
 use crate::monitoring::metrics::METRICS;
 use crate::strategy::{LegSide, TwoLegDecision};
-use crate::types::{AppConfig, ExecutionMode, MarketConfig};
+use crate::types::{AppConfig, ExecutionMode};
 
 use super::order::{
     Order, OrderId, OrderRequest, OrderSide, OrderStatus, OrderType, TimeInForce,
@@ -566,7 +566,7 @@ mod tests {
                 min_profit_usd: 0.1,
             },
             markets: MarketsConfig {
-                markets: vec![MarketConfig {
+                markets: vec![crate::types::MarketConfig {
                     slug: "BTC-USD-15MIN".to_string(),
                     coin: None,
                     up_token_id: Some("BTC_15M_UP".to_string()),
